@@ -1,0 +1,68 @@
+<!-- ... existing code ... -->
+        let interactableObjects = [];
+        
+        // ตัวแปรควบคุมกล้องที่ปรับปรุงใหม่
+        let isViewing = false;
+        let isCameraTransitioning = false;
+        let selectedPlanetId = null;
+        let currentPlanetMesh = null;
+        let previousPlanetPosition = new THREE.Vector3(); // เพิ่มตัวแปรเก็บตำแหน่งดาวเฟรมก่อนหน้า
+
+        let isTimePaused = false;
+        let timeMultiplier = 1.0;
+<!-- ... existing code ... -->
+        function openView(mesh) {
+            currentPlanetMesh = mesh;
+            selectedPlanetId = mesh.userData.id;
+            isViewing = true;
+            isCameraTransitioning = true; // เริ่มกระบวนการเคลื่อนกล้องไปหาดาว
+            
+            previousPlanetPosition.copy(mesh.position); // บันทึกตำแหน่งเริ่มต้นเพื่อไว้คำนวณการเคลื่อนที่
+
+            // ไม่ทำการ Disable controls.enableRotate อีกต่อไป 
+            // ผู้ใช้สามารถหมุนดูดาว 360 องศาขณะซูมอยู่ได้
+<!-- ... existing code ... -->
+            // ==========================================
+            // ระบบมุมกล้องที่ปรับแก้ใหม่ (หัวใจหลักที่ทำให้สมูธ)
+            // ==========================================
+            if (isViewing && currentPlanetMesh) {
+                const pConfig = planetsConfig.find(p => p.id === selectedPlanetId) || planetsConfig.flatMap(p => p.moons || []).find(m => m.id === selectedPlanetId);
+                const r = pConfig.radius;
+                
+                if (isCameraTransitioning) {
+                    // ช่วงซูมเข้า: ให้จุดหมุน (Target) เลื่อนตามดาว
+                    controls.target.lerp(currentPlanetMesh.position, 0.15);
+
+                    // คำนวณทิศทางจากกล้องพุ่งตรงไปหาดาว เพื่อไม่ให้กล้องเหวี่ยงไปมา
+                    let dir = camera.position.clone().sub(currentPlanetMesh.position).normalize();
+                    if (dir.lengthSq() < 0.01) dir.set(0, 0, 1);
+
+                    // ปรับระยะห่างให้พอดีและไม่มี offset แกน Y ดาวจะได้อยู่ตรงกลางจอเป๊ะๆ
+                    const idealCamPos = currentPlanetMesh.position.clone().add(dir.multiplyScalar(r * 5.5));
+                    
+                    camera.position.lerp(idealCamPos, 0.08);
+
+                    if (camera.position.distanceTo(idealCamPos) < Math.max(0.5, r * 0.2)) {
+                        isCameraTransitioning = false;
+                    }
+                } else {
+                    // เมื่อซูมเข้าถึงดาวแล้ว: ให้กล้องเกาะติดดาว 100%
+                    // 1. คำนวณระยะทางที่ดาวขยับไปในเฟรมนี้
+                    const deltaMove = currentPlanetMesh.position.clone().sub(previousPlanetPosition);
+                    
+                    // 2. ขยับตำแหน่งกล้องตามไปด้วยระยะทางเท่ากัน (ล็อคให้เดินไปพร้อมดาว)
+                    camera.position.add(deltaMove);
+                    
+                    // 3. ย้ายจุดศูนย์กลางของกล้อง (Target) ให้ตรงเป๊ะกับดาว
+                    controls.target.copy(currentPlanetMesh.position);
+                }
+
+                // อัปเดตตำแหน่งดาวของเฟรมปัจจุบันไว้ใช้คำนวณในเฟรมถัดไป
+                previousPlanetPosition.copy(currentPlanetMesh.position);
+            }
+
+            // ต้องรันอัปเดตทุกครั้งในลูปเสมอ เพื่อให้ระบบหน่วง (Damping) และสัมผัสทำงานได้ลื่นไหล!
+            controls.update(); 
+
+            let shakeOffset = new THREE.Vector3(0, 0, 0);
+<!-- ... existing code ... -->
